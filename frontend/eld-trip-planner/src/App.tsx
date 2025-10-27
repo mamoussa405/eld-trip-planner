@@ -13,9 +13,9 @@ export default function App() {
   const [showLogs, setShowLogs] = useState(false)
   const [dailyLogIndex, setDailyLogIndex] = useState(0)
   const [inputs, setInputs] = useState({
-    current_location: 'Tangier, Morocco',
-    pickup_location: 'Rabat, Morocco',
-    dropoff_location: 'Dakhla, Morocco',
+    current_location: 'Lemont, USA',
+    pickup_location: 'Rockford, USA',
+    dropoff_location: 'LA, USA',
     current_cycle_hours: 0,
   })
 
@@ -110,9 +110,9 @@ export default function App() {
                   className="px-6 py-2 bg-white hover:bg-gray-100 active:bg-gray-200 rounded-xl font-semibold transition-all duration-300 ease-in-out"
                   onClick={() => {
                     setInputs({
-                      current_location: 'Tangier, Morocco',
-                      pickup_location: 'Rabat, Morocco',
-                      dropoff_location: 'Dakhla, Morocco',
+                      current_location: 'Lemont, USA',
+                      pickup_location: 'Rockford, USA',
+                      dropoff_location: 'LA, USA',
                       current_cycle_hours: 0,
                     })
                     setRouteData(null)
