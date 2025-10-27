@@ -2,8 +2,11 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
 from rest_framework import status
+import logging
 from .serializers import TripInputSerializer
 from .utils import geocode, call_osrm_route, get_stops, ELDCalculator
+
+logger = logging.getLogger(__name__)
 
 
 class TripRouteView(APIView):
@@ -17,8 +20,10 @@ class TripRouteView(APIView):
             pickup_lat, pickup_lon = geocode(data["pickup_location"])
             dropoff_lat, dropoff_lon = geocode(data["dropoff_location"])
         except Exception as e:
+            logger.error(f"Error: {e}")
             return Response(
-                {"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST
+                {"message": "Invalid location"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         try:
@@ -33,7 +38,16 @@ class TripRouteView(APIView):
             route_from_curr_to_pickup_location = (
                 route_from_curr_to_pickup_location_resp.get("routes", [])[0]
             )
+        except Exception as e:
+            logger.error(f"Error: {e}")
+            return Response(
+                {
+                    "message": "No valid route found",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
+        try:
             eld_logs_calculator = ELDCalculator(
                 route=route,
                 route_from_curr_to_pickup_location=route_from_curr_to_pickup_location,
@@ -58,8 +72,9 @@ class TripRouteView(APIView):
                 status=200,
             )
         except Exception as e:
+            logger.error(f"Error: {e}")
             return Response(
-                {"detail": f"Routing error: {str(e)}"},
+                {"message": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 

@@ -9,9 +9,9 @@ from .constants import (
     EARTH_RADIUS_M,
     FUEL_INTERVAL_M,
     MAX_CYCLE_HOURS,
+    MAX_CYCLE_DAYS,
     MAX_DRIVING_HOURS_PER_DAY,
     MAX_DRIVING_HOURS_TO_REST,
-    END_OF_DAY_REST_DURATION_H,
     BREAK_DURATION_H,
     PICKUP_DURATION_H,
     DROPOFF_DURATION_H,
@@ -219,19 +219,24 @@ class ELDCalculator:
         self.curr_cycle_available = max(
             0, MAX_CYCLE_HOURS - curr_cycle_used_hours
         )
-        self.is_cycle_reset = False
         self._init_calculator()
 
     def get_eld_logs(self) -> list[dict]:
         logs = []
         remaining_hours = self.route_total_hours
-        eight_days_cycle = [0] * 8
 
         while remaining_hours > 0:
             self._init_day_data()
-            self._add_day_start_activities()
+
+            if self.curr_cycle_available < min(
+                remaining_hours, MAX_DRIVING_HOURS_PER_DAY
+            ):
+                self._reset_cycle_hours(logs)
+                continue
+
+            self._add_start_day_activities()
             self._add_day_activities(remaining_hours=remaining_hours)
-            self._add_day_end_activities(
+            self._add_end_day_activities(
                 is_last_day=(remaining_hours - self.driving_hours <= 0)
             )
 
@@ -255,7 +260,14 @@ class ELDCalculator:
             remaining_hours -= self.driving_hours
             self.curr_cycle_available -= self.driving_hours
 
+            if not self.pickup_done:
+                self.driving_hours_to_pickup -= self.driving_hours
+
             self.day_index += 1
+            self.cycle_day += 1
+
+            if self.cycle_day >= MAX_CYCLE_DAYS:
+                self.curr_cycle_available += MAX_DRIVING_HOURS_PER_DAY
 
         return logs
 
@@ -264,12 +276,18 @@ class ELDCalculator:
         route_distance_m = self.route.get("distance", 0)
 
         route_driving_hours = duration_s / SECONDS_TO_HOURS
-        route_distance_miles = route_distance_m * METERS_TO_MILES
 
-        self.speed_mph = route_distance_miles / route_driving_hours
+        self.route_distance_miles = route_distance_m * METERS_TO_MILES
+        self.speed_mph = self.route_distance_miles / route_driving_hours
         # include pickup (1h) and dropoff (1h)
         self.route_total_hours = route_driving_hours + 2.0
+        self.driving_hours_to_pickup = (
+            self.route_from_curr_to_pickup_location.get("duration", 0)
+            / SECONDS_TO_HOURS
+        )
         self.day_index = 1
+        self.cycle_day = 1
+        self.pickup_done = False
 
     def _init_day_data(self):
         self.off_duty_hours = 0
@@ -308,8 +326,12 @@ class ELDCalculator:
         )
 
         self.current_day_time += time_to_add
+        if status != TimeLineChangeType.DRIVING:
+            current_covered_distance = round(
+                self.driving_hours * self.speed_mph, 2
+            )
 
-    def _add_day_start_activities(self):
+    def _add_start_day_activities(self):
         start_day_activities = [
             {
                 "status": TimeLineChangeType.OFF_DUTY,
@@ -329,25 +351,12 @@ class ELDCalculator:
             },
         ]
 
-        if self.day_index == 1:
-            driving_hours_to_pickup = (
-                self.route_from_curr_to_pickup_location.get("duration", 0)
-                / SECONDS_TO_HOURS
-            )
-            start_day_activities.extend(
-                [
-                    {
-                        "status": TimeLineChangeType.DRIVING,
-                        "time_to_add": driving_hours_to_pickup,
-                        "activity": "Driving to pickup location",
-                    },
-                    {
-                        "status": TimeLineChangeType.ON_DUTY,
-                        "time_to_add": PICKUP_DURATION_H,
-                        "activity": "Pickup (1 hour)",
-                    },
-                ]
-            )
+        if (
+            self.driving_hours_to_pickup <= MAX_DRIVING_HOURS_PER_DAY
+            and not self.pickup_done
+        ):
+            self._include_pickup(start_day_activities)
+            self.pickup_done = True
 
         for day_activity in start_day_activities:
             self._add_change_to_time_line(
@@ -356,7 +365,44 @@ class ELDCalculator:
                 activity=day_activity.get("activity"),
             )
 
-    def _add_day_end_activities(self, is_last_day: bool = False):
+    def _include_pickup(self, day_activities: list[dict]):
+        day_activities.append(
+            {
+                "status": TimeLineChangeType.DRIVING,
+                "time_to_add": min(
+                    self.driving_hours_to_pickup,
+                    MAX_DRIVING_HOURS_TO_REST,
+                ),
+                "activity": "Driving to pickup",
+            },
+        )
+
+        if self.driving_hours_to_pickup > MAX_DRIVING_HOURS_TO_REST:
+            self.driving_hours_to_pickup -= MAX_DRIVING_HOURS_TO_REST
+            day_activities.extend(
+                [
+                    {
+                        "status": TimeLineChangeType.OFF_DUTY,
+                        "time_to_add": BREAK_DURATION_H,
+                        "activity": "Off duty, 8 hours driving break (30 min)",
+                    },
+                    {
+                        "status": TimeLineChangeType.DRIVING,
+                        "time_to_add": self.driving_hours_to_pickup,
+                        "activity": "Driving to pickup",
+                    },
+                ]
+            )
+
+        day_activities.append(
+            {
+                "status": TimeLineChangeType.ON_DUTY,
+                "time_to_add": PICKUP_DURATION_H,
+                "activity": "Pickup (1 hour)",
+            },
+        )
+
+    def _add_end_day_activities(self, is_last_day: bool = False):
         end_day_activities = [
             {
                 "status": TimeLineChangeType.ON_DUTY,
@@ -443,3 +489,34 @@ class ELDCalculator:
 
             if remaining_hours - self.driving_hours <= 0:
                 break
+
+    def _reset_cycle_hours(self, logs: list[dict]):
+        for _ in range(2):
+            self._init_day_data()
+            self._add_change_to_time_line(
+                status=TimeLineChangeType.OFF_DUTY,
+                time_to_add=HOURS_IN_DAY,
+                activity="Off duty, cycle reset",
+            )
+
+            logs.append(
+                {
+                    "day": self.day_index,
+                    "off_duty_hours": round(self.off_duty_hours, 2),
+                    "sleeper_berth_hours": round(self.sleeper_berth_hours, 2),
+                    "driving_hours": round(self.driving_hours, 2),
+                    "on_duty_hours": round(self.on_duty_hours, 2),
+                    "total_on_duty": round(
+                        self.driving_hours + self.on_duty_hours, 2
+                    ),
+                    "daily_distance_miles": round(
+                        self.driving_hours * self.speed_mph, 2
+                    ),
+                    "duty_status_timeline": self.duty_status_timeline,
+                }
+            )
+
+            self.day_index += 1
+
+        self.curr_cycle_available = MAX_CYCLE_HOURS
+        self.cycle_day = 0
