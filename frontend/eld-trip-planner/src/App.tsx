@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import MapView from './components/MapView'
+import { ToastContainer, toast } from 'react-toastify'
 import { getRouteAndLogs } from './api'
 import type { RouteData } from './types'
 import LogSheet from './components/LogSheet'
@@ -38,7 +39,6 @@ export default function App() {
       name: 'current_cycle_hours',
       label: 'Current cycle used (hrs)',
       type: 'number',
-      step: '1',
     },
   ]
 
@@ -65,7 +65,7 @@ export default function App() {
       const data = await getRouteAndLogs(inputs)
       setRouteData(data)
     } catch (err: any) {
-      alert(err?.response?.data?.detail || err?.message || 'Error')
+      toast.error(err?.response?.data?.message || err?.message || 'Error')
     } finally {
       setLoading(false)
     }
@@ -73,6 +73,16 @@ export default function App() {
 
   return (
     <div className="relative h-screen w-screen">
+      <ToastContainer
+        position="bottom-left"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop
+        closeOnClick
+        pauseOnHover
+        draggable
+        theme="colored"
+      />
       <div className="absolute inset-0 z-0">
         <MapView routeData={routeData} />
       </div>
@@ -81,13 +91,12 @@ export default function App() {
         <div className="bg-white rounded-2xl p-6 shadow">
           <h1 className="text-2xl font-semibold mb-6">🚚 Truck Trip Planner & ELD</h1>
           <form onSubmit={onSubmit} className="space-y-3">
-            {inputFields.map(({ name, label, type, step }) => (
+            {inputFields.map(({ name, label, type }) => (
               <label key={name} className="block">
                 <span className="text-sm">{label}</span>
                 <input
                   name={name}
                   type={type}
-                  step={step}
                   className="mt-1 block w-full rounded-md border p-2 focus-visible:outline-[#ED9B40]"
                   value={inputs[name as keyof typeof inputs]}
                   onChange={(e) => handleInputChange(e, type)}

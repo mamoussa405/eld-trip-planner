@@ -12,8 +12,8 @@ import polyline from '@mapbox/polyline'
 import type { RouteData, Stop } from '../types'
 import { defaultIcon, fuelStopIcon } from './icons/map-icons'
 
-// Default center to Morocco
 const MAP_DEFAULT_CENTER = [31.6295, -7.9811]
+
 
 export default function MapView({ routeData }: { routeData: RouteData | null }) {
   const positions = useMemo(() => {

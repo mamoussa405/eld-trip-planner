@@ -30,6 +30,8 @@ interface LogSheetProps {
   onPrevDayClick: () => void
 }
 
+const LOG_SHEET_WIDTH = 960 // 24 hours * 40px/hr
+
 export default function LogSheet({
   logData,
   dayIndex,
@@ -37,9 +39,6 @@ export default function LogSheet({
   onNextDayClick,
   onPrevDayClick,
 }: LogSheetProps) {
-  if (!logData) return null;
-
-  const width = 960 // 24 hours * 40px/hr
   const halfDayTimeline = Array.from({ length: 11 }, (_, i) => i + 1)
   const oneDaytimeline = ['Mid', ...halfDayTimeline, 'Noon', ...halfDayTimeline]
   const dutyStatusRows = [
@@ -76,7 +75,7 @@ export default function LogSheet({
       <div className="flex flex-col mt-4">
         <div className="flex">
           <div className="flex justify-end w-full">
-            <div className="flex" style={{ width: `${width}px` }}>
+            <div className="flex" style={{ width: `${LOG_SHEET_WIDTH}px` }}>
               {oneDaytimeline.map((label, i) => (
                 <div key={i} className="flex items-end text-xs" style={{ width: '40px' }}>
                   {label}
@@ -113,7 +112,7 @@ export default function LogSheet({
         </div>
       </div>
 
-      <div className="flex justify-between items-center" style={{ width: `${width}px` }}>
+      <div className="flex justify-between items-center" style={{ width: `${LOG_SHEET_WIDTH}px` }}>
         <div>
           <p>
             <strong>Total Miles Driving Today:</strong> {logData.daily_distance_miles}
